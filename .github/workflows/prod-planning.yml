@@ -60,7 +60,12 @@ jobs:
     # Run a Terraform plan
     - name: Terraform plan
       id: plan
-      run: terraform plan -var-file="prod.tfvars"
+      run: terraform plan -var-file="prod.tfplan"
+
+        # Run Terraform apply
+    - name: Terraform Apply
+      id: apply
+      run: terraform apply prod.tfplan
 
     # Add a comment to pull requests with plan results weeeeeee
     - name: Add Plan Comment
@@ -90,3 +95,19 @@ jobs:
             repo: context.repo.repo,
             body: output
           })
+
+          # Log into Azure to execute CLI commands
+    - name: Azure Login
+      uses: Azure/login@v2
+      with:
+        creds: '{"clientId":"${{ secrets.ARM_CLIENT_ID }}","clientSecret":"${{ secrets.ARM_CLIENT_SECRET }}","subscriptionId":"${{ secrets.ARM_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.ARM_TENANT_ID }}"}'
+
+    # Copy plan file to Azure Storage
+    - name: Azure File Copy
+      id: azure-file-copy
+      uses: Azure/cli@v1
+      with:
+        inlineScript: |
+          SA_NAME=$(cat .terraform/terraform.tfstate | jq -r .backend.config.storage_account_name)
+          CONTAINER_NAME=$(cat .terraform/terraform.tfstate | jq -r .backend.config.container_name)
+          az storage blob upload --account-name $SA_NAME --container $CONTAINER_NAME --file "prod.tfplan" --name "prod.tfplan" --auth-mode key
